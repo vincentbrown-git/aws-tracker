@@ -22,3 +22,4 @@ venv/
 .vscode/
 .idea/
 infra/.terraform/
+backend/aws_tracker.db
