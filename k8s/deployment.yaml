@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-tracker-backend
+  labels:
+    app: aws-tracker-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aws-tracker-backend
+  template:
+    metadata:
+      labels:
+        app: aws-tracker-backend
+    spec:
+      containers:
+      - name: aws-tracker-backend
+        image: 905921696930.dkr.ecr.us-east-1.amazonaws.com/aws-tracker-backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://postgres:postgres@postgres-service:5432/awstracker"
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: APP_ENV
+          value: "production"
+        - name: APP_NAME
+          value: "AWS Infrastructure Tracker"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_SECRET_ACCESS_KEY
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
