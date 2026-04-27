@@ -36,18 +36,39 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./backend
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
     - name: Update kubeconfig
       run: |
         aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
 
-    - name: Deploy to EKS
+    - name: Upsert aws-credentials Secret
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      run: |
+        kubectl create secret generic aws-credentials \
+          --from-literal=AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+          --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Apply Postgres + Service + HPA
+      run: |
+        kubectl apply -f k8s/postgres.yaml
+        kubectl apply -f k8s/service.yaml
+        kubectl apply -f k8s/hpa.yaml
+
+    - name: Render and apply Deployment with new image
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        kubectl set image deployment/aws-tracker-backend \
-          aws-tracker-backend=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        kubectl rollout status deployment/aws-tracker-backend
+        IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        sed "s|__IMAGE__|${IMAGE}|g" k8s/deployment.yaml | kubectl apply -f -
+
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/aws-tracker-backend --timeout=5m

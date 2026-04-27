@@ -6,6 +6,11 @@ metadata:
     app: aws-tracker-backend
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: aws-tracker-backend
@@ -16,9 +21,24 @@ spec:
     spec:
       containers:
       - name: aws-tracker-backend
-        image: 905921696930.dkr.ecr.us-east-1.amazonaws.com/aws-tracker-backend:latest
+        image: __IMAGE__
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          failureThreshold: 3
         env:
         - name: DATABASE_URL
           value: "postgresql://postgres:postgres@postgres-service:5432/awstracker"

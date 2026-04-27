@@ -135,6 +135,80 @@ terraform apply
 
 > ⚠️ NAT Gateways cost ~$0.045/hour each (~$65/month for both). Run `terraform destroy` when not in use to avoid charges.
 
+## Deploying to AWS EKS
+
+The app runs on EKS, with images stored in ECR and deploys driven by GitHub Actions.
+
+### Architecture (deployed)
+
+```
+GitHub push to main
+      │
+      ▼
+GitHub Actions  ──►  build image  ──►  push to ECR
+      │
+      ▼
+kubectl apply (Postgres + Service + HPA + Deployment)
+      │
+      ▼
+EKS cluster (2 t3.small nodes across 2 AZs)
+      │
+      ▼
+LoadBalancer Service ──► public ELB
+```
+
+### One-time bootstrap
+
+1. **Create the cloud infra with Terraform**
+
+   ```bash
+   cd infra
+   terraform init
+   terraform apply
+   ```
+
+   This provisions the VPC, EKS cluster + node group, IAM roles, and ECR repo.
+
+2. **Create an IAM user for CI** with `AmazonEC2ContainerRegistryPowerUser` and a custom policy allowing `eks:DescribeCluster` on the cluster. Save the access key + secret.
+
+3. **Grant that IAM user access to the cluster.** Easiest path with EKS access entries:
+
+   ```bash
+   aws eks create-access-entry \
+     --cluster-name aws-tracker-cluster \
+     --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/<ci-user>
+
+   aws eks associate-access-policy \
+     --cluster-name aws-tracker-cluster \
+     --principal-arn arn:aws:iam::<ACCOUNT_ID>:user/<ci-user> \
+     --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+     --access-scope type=cluster
+   ```
+
+4. **Add GitHub repo secrets** (Settings → Secrets and variables → Actions):
+   - `AWS_ACCESS_KEY_ID`
+   - `AWS_SECRET_ACCESS_KEY`
+
+5. **Push to `main`.** The workflow builds, pushes to ECR, applies the manifests, and waits for rollout.
+
+### Getting the public URL
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name aws-tracker-cluster
+kubectl get svc aws-tracker-service
+```
+
+The `EXTERNAL-IP` column shows the ELB hostname. Hit `http://<hostname>/health` to verify.
+
+### Tearing it down
+
+```bash
+kubectl delete -f k8s/
+cd infra && terraform destroy
+```
+
+> ⚠️ EKS control plane is ~$0.10/hour ($73/month) plus NAT + nodes. `terraform destroy` when not in use.
+
 ## What I Learned
 
 - Designing production-grade VPC architecture with high availability across multiple AZs
@@ -144,3 +218,6 @@ terraform apply
 - Database modeling with SQLAlchemy ORM
 - Containerizing services with Docker for local development
 - Managing environment variables and secrets securely
+- Orchestrating containers on Kubernetes with Deployments, Services, HPA, and PVCs
+- Running production workloads on Amazon EKS with managed node groups
+- Building a CI/CD pipeline with GitHub Actions: ECR build/push and idempotent kubectl apply
