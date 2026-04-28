@@ -18,18 +18,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: DEBUG - check secret presence
-      env:
-        KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      run: |
-        echo "AWS_ACCESS_KEY_ID length:    ${#KEY}     (expected ~20)"
-        echo "AWS_SECRET_ACCESS_KEY length: ${#SECRET}  (expected ~40)"
-        echo "AWS_ACCESS_KEY_ID first char: ${KEY:0:1}"
-        echo "AWS_ACCESS_KEY_ID last char:  ${KEY: -1}"
-        if [ -z "$KEY" ]; then echo "KEY IS EMPTY - secret not found in repo"; fi
-        if [ -z "$SECRET" ]; then echo "SECRET IS EMPTY - secret not found in repo"; fi
-
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
